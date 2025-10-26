@@ -32,7 +32,7 @@ public class Ride {
     private Double distance;
     private String passengers;
     private String vehicle;
-
+   private double EstimatedTime;
     private Instant accepteAt;
     @DBRef
     private User cancelledBy;

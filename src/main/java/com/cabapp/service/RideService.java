@@ -11,6 +11,7 @@ import com.cabapp.repository.ICaptainRepo;
 import com.cabapp.repository.IRiderepo;
 import com.cabapp.repository.IUserRepo;
 import com.cabapp.utils.CustomUser;
+import com.cabapp.utils.GoogleMapsService;
 import com.mongodb.client.model.geojson.Point;
 import com.mongodb.client.model.geojson.Position;
 import lombok.AllArgsConstructor;
@@ -24,6 +25,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.bind.annotation.RequestBody;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -37,24 +39,28 @@ public class RideService implements IRideService {
     private final IRiderepo iRiderepo;
     private final MongoTemplate mongoTemplate;
     private final ICaptainRepo icaptainRepo;
+    private  final GoogleMapsService googleMapsService;
+
 
     @Override
     public RideDetailsDTO createRide(RideDetailsDTO rideDetailsDTO) throws Exception {
         Ride ride = new Ride();
 
+        GeoJsonPoint pickUp=new GeoJsonPoint(
+                rideDetailsDTO.pickUpLocation().longitude(),
+                rideDetailsDTO.pickUpLocation().latitude()
+        );
+        GeoJsonPoint drop=new GeoJsonPoint(
+                rideDetailsDTO.dropLocation().longitude(),
+                rideDetailsDTO.dropLocation().latitude()
+        );
         // Convert DTO to GeoJsonPoint if not null
         if (rideDetailsDTO.pickUpLocation() != null) {
-            ride.setPickUpLocation(new GeoJsonPoint(
-                    rideDetailsDTO.pickUpLocation().longitude(),
-                    rideDetailsDTO.pickUpLocation().latitude()
-            ));
+            ride.setPickUpLocation(pickUp);
         }
 
         if (rideDetailsDTO.dropLocation() != null) {
-            ride.setDropLocation(new GeoJsonPoint(
-                    rideDetailsDTO.dropLocation().longitude(),
-                    rideDetailsDTO.dropLocation().latitude()
-            ));
+            ride.setDropLocation(drop);
         }
         ride.setSource(rideDetailsDTO.pickUpString());
         ride.setDestination(rideDetailsDTO.dropString());
@@ -69,8 +75,20 @@ public class RideService implements IRideService {
         }
         ride.setUser(bookedUser.get());
         ride.setRideStatus("NOT_STARTED");
-
         // Save ride
+        GoogleMapsService.RouteInfo routeInfo = googleMapsService.getDistanceTimeRoute(
+              pickUp,drop,
+                "driving"
+        );
+
+        double baseFare = 50.0;
+        double perKmRate = 10.0;
+
+// Calculate fare based on distance
+        ride.setFare(BigDecimal.valueOf(baseFare + (perKmRate * routeInfo.getDistanceKm())));
+        ride.setDistance(routeInfo.getDistanceKm());
+        ride.setEstimatedTime(routeInfo.getDurationMin());
+
         Ride createdRide = iRiderepo.save(ride);
 
         // Convert GeoJsonPoint back to DTO for response
